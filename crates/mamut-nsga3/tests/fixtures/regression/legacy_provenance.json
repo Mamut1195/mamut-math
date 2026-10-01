@@ -1,0 +1,32 @@
+{
+  "schema_version": 1,
+  "fixture_name": "vv001_legacy_provenance",
+  "source_sha": "6db4862d7a4035de8d494cdc62607b12b4edb103",
+  "source_repo": "MAMUT Hydraulics (read-only)",
+  "semantic_label": "legacy-parity",
+  "legacy_parity_statement": "legacy parity means we preserve what we decided to preserve, NOT mathematical authority",
+  "frozen_paths": [
+    "hydro-optimizer/src/nsga3/reference_points.rs",
+    "hydro-optimizer/src/nsga3/nondom_sort.rs",
+    "hydro-optimizer/src/nsga3/normalize.rs",
+    "hydro-optimizer/src/nsga3/niching.rs",
+    "hydro-optimizer/src/nsga3/selection.rs",
+    "hydro-optimizer/src/operators.rs"
+  ],
+  "referenced_suites": [
+    "ported_golden.rs",
+    "scripted_parity.rs",
+    "session.rs"
+  ],
+  "preserved": [
+    "reference-lattice enumeration order and count",
+    "nondominated-sort front structure and index order",
+    "normalize intercept values (1e-9/1e-12)",
+    "association/niche-distance values (1e-12)",
+    "selection structural invariants (count/validity/uniqueness)"
+  ],
+  "not_claimed": [
+    "cross-implementation bit-identical stochastic offspring (the frozen rand_chacha keystream differs from mamut.chacha20-std by design)",
+    "mathematical authority: legacy parity is a regression anchor, not a proof of correctness"
+  ]
+}

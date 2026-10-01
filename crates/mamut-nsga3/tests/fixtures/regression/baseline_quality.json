@@ -1,0 +1,93 @@
+{
+  "schema_version": 1,
+  "fixture_name": "vv001_baseline_quality",
+  "generated_by": "tests/support/regression.rs::generate_baseline_quality_json()",
+  "problem_config": {"population": 92, "generations": 99, "eval_budget": 9200, "n_obj": 3, "divisions": 12, "reference_directions": 91, "source_loop": "support/harness.rs (pymoo-faithful composition)"},
+  "same_build_exact_tolerance": 1e-12,
+  "feasibility_semantics_note": "The per-seed HV/IGD+ values are honest only for admissibility-filtered lanes: the quality loop evaluates the unconstrained DTLZ surface, and the infeasibility filter is exercised separately in conformance_quality.rs. These numbers are a same-build determinism anchor and a distributional quality band, not a feasible-rate claim.",
+  "strict_band": {"hv_min_ratio": 0.95, "hv_degenerate_floor": 0.05, "hv_abs_floor": 0.0, "igd_floor": 0.0},
+  "problems": {
+    "dtlz1": {
+      "hv_reference_point": [0.6, 0.6, 0.6],
+      "applied_band": {"hv_min_ratio": 0.95, "hv_degenerate_floor": 0.05, "hv_abs_floor": 0.05, "igd_floor": 1.0},
+      "band_rationale": "DTLZ1 degenerate-absolute: at the matched 9200 budget neither pymoo nor the crate converges (oracle median HV ~0.0155, near zero), so a relative band is uninformative; the applied gate is ours >= oracle - 0.05 and max IGD+ <= 2x median + 1.0. The raw medians are reported.",
+      "strict_hv_shortfall_disclosed": true,
+      "per_seed": [
+        {"seed": 0, "hv": 0.0, "igd_plus": 0.6897014162997847},
+        {"seed": 1, "hv": 0.011333244585989933, "igd_plus": 0.4003018050742489},
+        {"seed": 2, "hv": 0.16173894200714647, "igd_plus": 0.07126290693442477},
+        {"seed": 3, "hv": 0.1377888418752674, "igd_plus": 0.11022219233692716},
+        {"seed": 4, "hv": 0.0, "igd_plus": 0.6465490630804153},
+        {"seed": 5, "hv": 0.0, "igd_plus": 1.5058540925660808},
+        {"seed": 6, "hv": 0.038225727207727885, "igd_plus": 0.3314868310745124},
+        {"seed": 7, "hv": 0.0, "igd_plus": 0.773801946291993}
+      ],
+      "median_hv": 0.0056666222929949665,
+      "max_igd_plus": 1.5058540925660808,
+      "oracle_median_hv": 0.01551176096091879,
+      "oracle_median_igd_plus": 0.48025471123600605,
+      "band_pass": true,
+      "band_detail": "problem=dtlz1 hv_mode=degenerate-absolute median_hv_ours=5.666622e-3 median_hv_oracle=1.551176e-2 hv_ratio=0.3653 hv_ok=true max_igd_ours=1.505854e0 median_igd_oracle=4.802547e-1 igd_band=1.960509e0 igd_ok=true"
+    },
+    "dtlz2": {
+      "hv_reference_point": [1.1, 1.1, 1.1],
+      "applied_band": {"hv_min_ratio": 0.95, "hv_degenerate_floor": 0.05, "hv_abs_floor": 0.0, "igd_floor": 0.0},
+      "band_rationale": "DTLZ2 strict: median HV >= 0.95x oracle median AND <= 1.05x (two-sided relative band), max IGD+ <= 2x oracle median IGD+. Pre-registered by MATH-NSGA-004; passes.",
+      "strict_hv_shortfall_disclosed": false,
+      "per_seed": [
+        {"seed": 0, "hv": 0.737850666411017, "igd_plus": 0.025170065346857277},
+        {"seed": 1, "hv": 0.7353083569550769, "igd_plus": 0.02642893853046644},
+        {"seed": 2, "hv": 0.7359646606617042, "igd_plus": 0.025888503105348074},
+        {"seed": 3, "hv": 0.7371531329649408, "igd_plus": 0.025383646976180896},
+        {"seed": 4, "hv": 0.7355872856321242, "igd_plus": 0.025976017192046317},
+        {"seed": 5, "hv": 0.7336821980784737, "igd_plus": 0.02710957303555725},
+        {"seed": 6, "hv": 0.7342008317787219, "igd_plus": 0.02677442058188345},
+        {"seed": 7, "hv": 0.7344542821366786, "igd_plus": 0.02674142117313921}
+      ],
+      "median_hv": 0.7354478212936005,
+      "max_igd_plus": 0.02710957303555725,
+      "oracle_median_hv": 0.7368149716648658,
+      "oracle_median_igd_plus": 0.025603509120204718,
+      "band_pass": true,
+      "band_detail": "problem=dtlz2 hv_mode=relative-band median_hv_ours=7.354478e-1 median_hv_oracle=7.368150e-1 hv_ratio=0.9981 hv_ok=true max_igd_ours=2.710957e-2 median_igd_oracle=2.560351e-2 igd_band=5.120702e-2 igd_ok=true"
+    },
+    "dtlz7": {
+      "hv_reference_point": [1.1, 1.1, 6.5],
+      "applied_band": {"hv_min_ratio": 0.85, "hv_degenerate_floor": 0.05, "hv_abs_floor": 0.05, "igd_floor": 0.1},
+      "band_rationale": "DTLZ7 applied band 0.85: the disconnected front plus deterministic (vs pymoo random) niche tie-breaks and 8-seed spread; max IGD+ <= 2x median + 0.10. DISCLOSED: the strict 5% median-HV band is NOT met here (ratio ~0.93); the shortfall is reported, not hidden.",
+      "strict_hv_shortfall_disclosed": true,
+      "per_seed": [
+        {"seed": 0, "hv": 1.9793447677852365, "igd_plus": 0.1400745332128704},
+        {"seed": 1, "hv": 2.1659903834068936, "igd_plus": 0.08327878682698996},
+        {"seed": 2, "hv": 2.0089929078402995, "igd_plus": 0.12014784330334724},
+        {"seed": 3, "hv": 2.0224320042801445, "igd_plus": 0.12520942232924626},
+        {"seed": 4, "hv": 2.0439242918142626, "igd_plus": 0.11904570101461566},
+        {"seed": 5, "hv": 1.9547439156364743, "igd_plus": 0.15209566519543471},
+        {"seed": 6, "hv": 2.028508088919167, "igd_plus": 0.12187953021516972},
+        {"seed": 7, "hv": 2.090604691949466, "igd_plus": 0.10621230286621365}
+      ],
+      "median_hv": 2.025470046599656,
+      "max_igd_plus": 0.15209566519543471,
+      "oracle_median_hv": 2.17797068033091,
+      "oracle_median_igd_plus": 0.08655094695538593,
+      "band_pass": true,
+      "band_detail": "problem=dtlz7 hv_mode=relative-band median_hv_ours=2.025470e0 median_hv_oracle=2.177971e0 hv_ratio=0.9300 hv_ok=true max_igd_ours=1.520957e-1 median_igd_oracle=8.655095e-2 igd_band=2.731019e-1 igd_ok=true"
+    }
+  },
+  "fixture_registry": [
+    {"path": "crates/mamut-nsga3/tests/fixtures/conformance/component_oracle.json", "sha256": "b27b6e69b7f5c78d381f8c578c8098688f13ee6338fa1dd140c890b947f71f57"},
+    {"path": "crates/mamut-nsga3/tests/fixtures/conformance/pymoo_dtlz_oracle.json", "sha256": "ffe1519621ac7c4497af6f59ae1fdafd7f294de3288b18cfdd67b07906a8132e"},
+    {"path": "crates/mamut-nsga3/tests/fixtures/conformance/LITERATURE_CHECKLIST.md", "sha256": "6e46db8ad3bcf736a167721e08b0ddcab56dec7f62efc91b9cc95aa4167b0c50"},
+    {"path": "crates/mamut-nsga3/tests/fixtures/conformance/provenance.md", "sha256": "e24d4147f8a95ada88e0c4cbbdb679f44b70cd709e0aa9abe84f9471344a7726"},
+    {"path": "crates/mamut-nsga3/tests/fixtures/metrics_5d_golden.json", "sha256": "6118d33d3abe731db20c5f40ef3350e6bd062af56dd783cb3c6a47061fe0e5c8"},
+    {"path": "crates/mamut-nsga3/tests/fixtures/regression/legacy_provenance.json", "sha256": "fd0100e39cc88c327544b5f9d27641d1450bb07b9b1c49d91cab53747c92d3d4"}
+  ],
+  "sensitivity_evidence": {
+    "method": "local one-off mutations, each re-run against the affected lane and restored byte-exact before commit: (1) category A expected-hash flip; (2) category C committed per-seed HV digit flip (real experiment, see ledger notes)",
+    "ledger": [
+      {"target": "support/regression.rs LEGACY_EXPECTED_HASHES[0]", "expected_failure": true, "observed_failure": true, "failing_test": "regression_legacy_parity::seed_replay_matches_committed_hashes", "restored": true},
+      {"target": "baseline_quality.json problems.dtlz2.per_seed[0].hv", "expected_failure": true, "observed_failure": true, "failing_test": "regression_quality_fast::dtlz2_fast_slice_matches_committed_exactly", "restored": true, "note": "real experiment 2026-10-01: one 1e-9 digit flipped 0.737850666411017 -> 0.737850667411017 (delta 1e-9 > the 1e-12 same-build tolerance); exactly one test failed, dtlz2_fast_slice_matches_committed_exactly at seed 0 HV, while dtlz2_fast_slice_band_passes still passed; fixture restored byte-exact to SHA-256 c74f4b1a9fd649e75a5aa36ba0617fff0af5ad5ea0f3671a1dcec8e469fe4297, LastWriteTime touched, fast lane re-run green; this recorded digest is the fixture digest taken at probe time - the sensitivity_evidence block was edited afterwards, so the current committed file digest differs from it by exactly those later ledger edits"}
+    ],
+    "disclosed_limitation": "the earlier probe that mutated baseline_quality.json problems.dtlz2.applied_band.hv_min_ratio did NOT detect corruption and is withdrawn as invalid evidence: applied_band fixture rows are registry duplicates and are NOT currently the source of the runtime band gate for regression_quality_fast, which reads the pre-registered constants in support/regression.rs applied_band_row; constants and fixture rows are kept equal today (the report-path fast_quality_status does read the fixture band rows via band_from_json). Wiring applied_band_row to read the fixture directly is a documented follow-up outside this ticket."
+  }
+}

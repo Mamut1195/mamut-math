@@ -9,3 +9,7 @@ coverage/
 
 .DS_Store
 Thumbs.db
+
+# Python bytecode: MAMUT-VV-001 stages scripts/oracles/ at directory level;
+# stray .pyc must not enter the evidence tree (keeps evidence honest).
+__pycache__/
