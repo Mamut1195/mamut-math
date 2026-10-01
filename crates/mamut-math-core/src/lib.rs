@@ -15,16 +15,22 @@
 //!   rejected with a typed [`MathError`].
 //! - Serialization (see [`codec`]) is canonical, versioned and deterministic.
 //!
-//! ## Explicitly deferred (deliberately NOT defined here)
-//! Random-number generation (`RngPort`/PRNG), run manifests, checkpoint/replay
-//! and optimization evidence manifests are **out of scope** for this ticket and
-//! will be introduced by their own tickets (`MATH-RNG-001`, `MATH-EVD-001`).
-//! This crate defines none of those types.
+//! ## Evidence manifests
+//! Run manifests and reproducibility evidence (`RunManifest`, `Fingerprint`,
+//! `StopReason`, `EvaluationRecord`, all in [`evidence`]) are generic,
+//! backend-neutral contracts owned by this crate: they record run identity,
+//! problem fingerprints, solver/backend versions, seed metadata, configs,
+//! evaluation counts, stop reasons, precision, targets, diagnostics and artifact
+//! hashes without embedding domain physics, normative logic, or secret material.
+//! Random-number generation and execution ports (`RngPort`/PRNG,
+//! checkpoint/replay) remain out of scope and will be introduced by their own
+//! tickets (`MATH-RNG-001` and followers); evidence types never reference them.
 
 pub mod codec;
 pub mod constraint;
 pub mod error;
 pub mod evaluation;
+pub mod evidence;
 pub mod objective;
 pub mod value;
 pub mod variable;
@@ -45,3 +51,13 @@ pub use evaluation::{
 pub use objective::{ObjectiveDescriptor, ObjectiveSense, ObjectiveValues};
 pub use value::ValidFloat;
 pub use variable::{DiscreteSet, Variable, VariableId, VariableKind};
+
+pub use codec::{
+    decode_constraint_descriptors, decode_objective_descriptors, decode_run_manifest,
+    encode_constraint_descriptors, encode_objective_descriptors, encode_run_manifest,
+};
+pub use evidence::{
+    ArtifactHash, ConfigParam, ConfigValue, EvaluationRecord, EvidenceExport, Fingerprint,
+    Precision, RngSpec, RunId, RunKind, RunManifest, RunManifestParams, SolverVersion, StopReason,
+    FINGERPRINT_ALGORITHM_SHA256_V1, MANIFEST_VERSION,
+};
