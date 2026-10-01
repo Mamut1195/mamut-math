@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/mamut-math-core"]
+members = ["crates/mamut-math-core", "crates/mamut-nsga3"]
 
 [workspace.package]
 edition = "2021"
