@@ -16,16 +16,17 @@
 //! - Serialization (see [`codec`]) is canonical, versioned and deterministic.
 //!
 //! ## Explicitly deferred (deliberately NOT defined here)
-//! Random-number generation (`RngPort`/PRNG), run manifests, checkpoint/replay
-//! and optimization evidence manifests are **out of scope** for this ticket and
-//! will be introduced by their own tickets (`MATH-RNG-001`, `MATH-EVD-001`).
-//! This crate defines none of those types.
+//! Run manifests, checkpoint/replay and optimization evidence manifests are
+//! **out of scope** here and will be introduced by their own ticket
+//! (`MATH-EVD-001`). Random-number generation is provided by [`rng`]
+//! (`MATH-RNG-001`).
 
 pub mod codec;
 pub mod constraint;
 pub mod error;
 pub mod evaluation;
 pub mod objective;
+pub mod rng;
 pub mod value;
 pub mod variable;
 
@@ -43,5 +44,8 @@ pub use evaluation::{
     Candidate, Diagnostic, DiagnosticCode, Diagnostics, EvaluationOutcome, Feasibility,
 };
 pub use objective::{ObjectiveDescriptor, ObjectiveSense, ObjectiveValues};
+pub use rng::{
+    chacha20_block, MamutRng, RngMetadata, RngPort, Seed, RNG_ALGORITHM_ID, RNG_ALGORITHM_VERSION,
+};
 pub use value::ValidFloat;
 pub use variable::{DiscreteSet, Variable, VariableId, VariableKind};

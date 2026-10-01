@@ -145,7 +145,11 @@ fn write_i64(value: i64, out: &mut Vec<u8>) {
 /// do not fit instead of truncating.
 ///
 /// `what` names the offending field for the error message.
-fn checked_u32(value: usize, what: &str) -> Result<u32, MathError> {
+///
+/// This is the crate-wide chokepoint for every `usize -> u32` wire-format
+/// narrowing; other hand-written encoders (e.g. [`crate::rng`]) reuse it so the
+/// reject-don't-truncate rule is enforced in exactly one place.
+pub(crate) fn checked_u32(value: usize, what: &str) -> Result<u32, MathError> {
     u32::try_from(value).map_err(|_| {
         MathError::new(
             ErrorKind::IndexOutOfRange,
