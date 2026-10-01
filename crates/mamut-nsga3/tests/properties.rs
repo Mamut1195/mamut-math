@@ -6,9 +6,9 @@
 use mamut_math_core::rng::MamutRng;
 use mamut_math_core::{ErrorKind, Seed, ValidFloat, Variable, VariableId, VariableKind};
 use mamut_nsga3::{
-    associate, build_niche_counts, fast_nondominated_sort, init_population, normalize,
-    perp_distance, polynomial_mutation, sbx_crossover, select_environmental,
-    uniform_reference_points, var_or, Individual,
+    associate, build_niche_counts, extract_pareto_front, fast_nondominated_sort, hypervolume,
+    igd_plus, init_population, is_nondominated_set, normalize, perp_distance, polynomial_mutation,
+    sbx_crossover, select_environmental, uniform_reference_points, var_or, Individual,
 };
 
 fn variables(bounds: &[(f64, f64)]) -> Vec<Variable> {
@@ -409,5 +409,158 @@ fn init_population_is_deterministic_and_unevaluated() {
     for ind in init_population(&vars, 10, &mut rng).unwrap() {
         assert!(!ind.is_evaluated());
         assert!(ind.fitness.is_none());
+    }
+}
+
+// ───────────────────────── Pareto metrics ─────────────────────────
+
+fn sample_population(n: usize) -> Vec<Vec<f64>> {
+    (0..n)
+        .map(|i| {
+            let t = i as f64 / n as f64;
+            vec![
+                t,
+                1.0 - t,
+                (t - 0.5).abs(),
+                1.0 - (t - 0.5).abs(),
+                0.25 + 0.5 * t,
+            ]
+        })
+        .collect()
+}
+
+#[test]
+fn extract_pareto_front_is_pure_and_matches_first_front() {
+    let fitnesses = sample_population(31);
+    let fronts = fast_nondominated_sort(&fitnesses).unwrap();
+    let front = extract_pareto_front(&fitnesses).unwrap();
+
+    // Thin helper: exactly the rank-1 front, in the frozen sort order.
+    assert_eq!(front, fronts[0]);
+
+    // Internal antichain property through the public validator hook.
+    assert!(is_nondominated_set(&fitnesses, &front).unwrap());
+
+    // Front purity: no extracted point is dominated by any point of the whole
+    // population (not merely by another point of the front).
+    for &i in &front {
+        for j in 0..fitnesses.len() {
+            if i != j {
+                assert!(!mamut_nsga3::dominates(&fitnesses[j], &fitnesses[i]).unwrap());
+            }
+        }
+    }
+}
+
+#[test]
+fn extract_pareto_front_empty_input_is_empty() {
+    assert!(extract_pareto_front(&[]).unwrap().is_empty());
+    assert!(is_nondominated_set(&[], &[]).unwrap());
+}
+
+/// Focused, non-vacuous front-extraction test: the population provably
+/// contains dominated candidates, so the assertions genuinely exercise
+/// dominated-point exclusion (unlike the trade-off-only sweep above).
+#[test]
+fn extract_pareto_front_excludes_dominated_points_non_vacuously() {
+    // 2-objective minimization population with known dominated candidates.
+    let fitnesses = vec![
+        vec![1.0, 5.0], // 0: nondominated
+        vec![3.0, 3.0], // 1: nondominated
+        vec![5.0, 1.0], // 2: nondominated
+        vec![4.0, 4.0], // 3: dominated by 1
+        vec![3.0, 3.0], // 4: duplicate of 1 (tie -> nondominated)
+        vec![6.0, 6.0], // 5: dominated by multiple others
+        vec![9.0, 2.0], // 6: dominated by 2
+        vec![2.0, 8.0], // 7: dominated by 0
+    ];
+    let n = fitnesses.len();
+
+    // (d) Non-vacuity premise computed in-test: some index is dominated by at
+    // least one other, and index 5 has multiple distinct dominators.
+    let dominated: Vec<usize> = (0..n)
+        .filter(|&i| {
+            (0..n).any(|j| j != i && mamut_nsga3::dominates(&fitnesses[j], &fitnesses[i]).unwrap())
+        })
+        .collect();
+    assert_eq!(
+        dominated,
+        vec![3, 5, 6, 7],
+        "test premise: dominated indices"
+    );
+    let dominators_of_5 = (0..n)
+        .filter(|&j| j != 5 && mamut_nsga3::dominates(&fitnesses[j], &fitnesses[5]).unwrap())
+        .count();
+    assert!(
+        dominators_of_5 >= 2,
+        "index 5 must be dominated by multiple points, found {dominators_of_5}"
+    );
+
+    // (a) Exact true nondominated set, in the frozen insertion order, and equal
+    // to the rank-1 front of the full sort.
+    let front = extract_pareto_front(&fitnesses).unwrap();
+    assert_eq!(front, vec![0, 1, 2, 4]);
+    assert_eq!(front, fast_nondominated_sort(&fitnesses).unwrap()[0]);
+
+    // (b) No dominated index is present in the extracted front.
+    for &index in &dominated {
+        assert!(
+            !front.contains(&index),
+            "dominated index {index} was extracted"
+        );
+    }
+
+    // (c) The extracted front is internally nondominated, while the full
+    // population is not.
+    let all_indices: Vec<usize> = (0..n).collect();
+    assert!(is_nondominated_set(&fitnesses, &front).unwrap());
+    assert!(!is_nondominated_set(&fitnesses, &all_indices).unwrap());
+}
+
+#[test]
+fn is_nondominated_set_detects_a_dominated_subset() {
+    let fitnesses = vec![
+        vec![1.0, 1.0],
+        vec![2.0, 2.0], // dominated by index 0
+        vec![0.5, 3.0], // incomparable with index 0
+    ];
+    assert!(is_nondominated_set(&fitnesses, &[0, 2]).unwrap());
+    assert!(!is_nondominated_set(&fitnesses, &[0, 1]).unwrap());
+    assert!(is_nondominated_set(&fitnesses, &[1]).unwrap());
+    assert_eq!(
+        is_nondominated_set(&fitnesses, &[3]).unwrap_err().kind(),
+        ErrorKind::IndexOutOfRange
+    );
+}
+
+#[test]
+fn hypervolume_never_decreases_when_a_point_is_added() {
+    let reference = [6.0, 6.0, 6.0];
+    let base = vec![
+        vec![1.0, 3.0, 2.0],
+        vec![3.0, 1.0, 2.0],
+        vec![2.0, 2.0, 1.0],
+    ];
+    let base_hv = hypervolume(&base, &reference).unwrap();
+
+    // A genuinely nondominated point extends the front; the union measure can
+    // only grow.
+    let mut extended = base.clone();
+    extended.push(vec![0.5, 4.0, 4.0]);
+    let extended_hv = hypervolume(&extended, &reference).unwrap();
+    assert!(extended_hv + 1e-12 >= base_hv);
+
+    // A dominated point adds no volume at all.
+    let mut dominated = base.clone();
+    dominated.push(vec![3.5, 3.5, 3.0]);
+    let dominated_hv = hypervolume(&dominated, &reference).unwrap();
+    assert!((dominated_hv - base_hv).abs() <= 1e-12);
+}
+
+#[test]
+fn igd_plus_identity_property_holds_for_sample_fronts() {
+    for n in [1usize, 2, 5, 17] {
+        let front = sample_population(n);
+        assert_eq!(igd_plus(&front, &front).unwrap(), 0.0, "N = {n}");
     }
 }

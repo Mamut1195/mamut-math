@@ -23,8 +23,11 @@
 //!
 //! ## Module map
 //! - [`reference_points`] — Das-Dennis simplex lattice.
-//! - [`nondom_sort`] — Deb 2002 fast nondominated sort.
+//! - [`nondom_sort`] — Deb 2002 fast nondominated sort, first-front extraction
+//!   and nondominated-set validation.
 //! - [`mod@normalize`] — extreme-point hyperplane intercept normalization.
+//! - [`metrics`] — generic Pareto quality metrics (exact hypervolume, IGD+,
+//!   unit-box normalization); all objectives minimized.
 //! - [`niching`] — association, niche counts and partial-front selection.
 //! - [`selection`] — environmental selection wrapper.
 //! - [`operators`] — SBX, polynomial mutation, `varOr`, adaptive eta, init.
@@ -34,6 +37,7 @@
 
 pub mod config;
 pub mod error;
+pub mod metrics;
 pub mod niching;
 pub mod nondom_sort;
 pub mod normalize;
@@ -46,8 +50,11 @@ mod internal;
 
 pub use config::Nsga3Config;
 pub use error::{ErrorKind, MathError};
+pub use metrics::{denormalize_from_unit_box, hypervolume, igd_plus, normalize_to_unit_box};
 pub use niching::{associate, build_niche_counts, perp_distance, select_from_partial_front};
-pub use nondom_sort::{dominates, fast_nondominated_sort};
+pub use nondom_sort::{
+    dominates, extract_pareto_front, fast_nondominated_sort, is_nondominated_set,
+};
 pub use normalize::{normalize, NormalizeResult};
 pub use operators::{
     adaptive_eta_value, init_population, polynomial_mutation, sbx_crossover, var_or, Individual,

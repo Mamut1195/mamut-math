@@ -154,3 +154,19 @@ fn f64_canonical_signatures() {
     fn assert_no_generic<T>() {}
     assert_no_generic::<Individual>();
 }
+
+/// The Pareto-metric surface (MATH-NSGA-003) is expressed with core MAMUT types
+/// only — `f64`/`usize`/`Vec` plus `MathError`; no third-party type crosses the
+/// crate boundary and no fixed objective arity is baked in.
+#[test]
+#[allow(clippy::type_complexity)]
+fn metrics_surface_uses_only_core_types() {
+    let _: fn(&[Vec<f64>], &[f64]) -> Result<f64, MathError> = mamut_nsga3::hypervolume;
+    let _: fn(&[Vec<f64>], &[Vec<f64>]) -> Result<f64, MathError> = mamut_nsga3::igd_plus;
+    let _: fn(&[Vec<f64>], &[f64], &[f64]) -> Result<Vec<Vec<f64>>, MathError> =
+        mamut_nsga3::normalize_to_unit_box;
+    let _: fn(&[Vec<f64>], &[f64], &[f64]) -> Result<Vec<Vec<f64>>, MathError> =
+        mamut_nsga3::denormalize_from_unit_box;
+    let _: fn(&[Vec<f64>]) -> Result<Vec<usize>, MathError> = mamut_nsga3::extract_pareto_front;
+    let _: fn(&[Vec<f64>], &[usize]) -> Result<bool, MathError> = mamut_nsga3::is_nondominated_set;
+}
