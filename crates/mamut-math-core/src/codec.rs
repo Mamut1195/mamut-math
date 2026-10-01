@@ -48,6 +48,8 @@ use crate::objective::{ObjectiveDescriptor, ObjectiveSense, ObjectiveValues};
 use crate::value::ValidFloat;
 use crate::variable::{DiscreteSet, Variable, VariableId, VariableKind};
 
+use crate::evidence::RunManifest;
+
 /// Version of the canonical byte codec.
 pub const SCHEMA_VERSION: u32 = 1;
 
@@ -57,7 +59,7 @@ pub const SCHEMA_VERSION: u32 = 1;
 /// top-level helpers in this module add and check the header. Encoding is
 /// fallible because `usize` magnitudes that do not fit the `u32` wire format
 /// must fail explicitly instead of truncating.
-trait Canonical: Sized {
+pub(crate) trait Canonical: Sized {
     /// Append this value's canonical payload to `out`.
     fn encode(&self, out: &mut Vec<u8>) -> Result<(), MathError>;
     /// Read a value from `dec`, rebuilding it through validating constructors.
@@ -65,17 +67,17 @@ trait Canonical: Sized {
 }
 
 /// Cursor-based, bounds-checked reader over a byte slice.
-struct Decoder<'a> {
+pub(crate) struct Decoder<'a> {
     bytes: &'a [u8],
     pos: usize,
 }
 
 impl<'a> Decoder<'a> {
-    fn new(bytes: &'a [u8]) -> Self {
+    pub(crate) fn new(bytes: &'a [u8]) -> Self {
         Self { bytes, pos: 0 }
     }
 
-    fn is_empty(&self) -> bool {
+    pub(crate) fn is_empty(&self) -> bool {
         self.pos >= self.bytes.len()
     }
 
@@ -96,31 +98,31 @@ impl<'a> Decoder<'a> {
         Ok(slice)
     }
 
-    fn read_u8(&mut self) -> Result<u8, MathError> {
+    pub(crate) fn read_u8(&mut self) -> Result<u8, MathError> {
         Ok(self.take(1)?[0])
     }
 
-    fn read_u32(&mut self) -> Result<u32, MathError> {
+    pub(crate) fn read_u32(&mut self) -> Result<u32, MathError> {
         let bytes: [u8; 4] = self.take(4)?.try_into().expect("exactly 4 bytes");
         Ok(u32::from_le_bytes(bytes))
     }
 
-    fn read_u64(&mut self) -> Result<u64, MathError> {
+    pub(crate) fn read_u64(&mut self) -> Result<u64, MathError> {
         let bytes: [u8; 8] = self.take(8)?.try_into().expect("exactly 8 bytes");
         Ok(u64::from_le_bytes(bytes))
     }
 
-    fn read_i64(&mut self) -> Result<i64, MathError> {
+    pub(crate) fn read_i64(&mut self) -> Result<i64, MathError> {
         let bytes: [u8; 8] = self.take(8)?.try_into().expect("exactly 8 bytes");
         Ok(i64::from_le_bytes(bytes))
     }
 
-    fn read_valid_float(&mut self) -> Result<ValidFloat, MathError> {
+    pub(crate) fn read_valid_float(&mut self) -> Result<ValidFloat, MathError> {
         let bits = self.read_u64()?;
         ValidFloat::new(f64::from_bits(bits))
     }
 
-    fn read_string(&mut self) -> Result<String, MathError> {
+    pub(crate) fn read_string(&mut self) -> Result<String, MathError> {
         let len = self.read_u32()? as usize;
         let bytes = self.take(len)?;
         core::str::from_utf8(bytes)
@@ -129,15 +131,15 @@ impl<'a> Decoder<'a> {
     }
 }
 
-fn write_u32(value: u32, out: &mut Vec<u8>) {
+pub(crate) fn write_u32(value: u32, out: &mut Vec<u8>) {
     out.extend_from_slice(&value.to_le_bytes());
 }
 
-fn write_u64(value: u64, out: &mut Vec<u8>) {
+pub(crate) fn write_u64(value: u64, out: &mut Vec<u8>) {
     out.extend_from_slice(&value.to_le_bytes());
 }
 
-fn write_i64(value: i64, out: &mut Vec<u8>) {
+pub(crate) fn write_i64(value: i64, out: &mut Vec<u8>) {
     out.extend_from_slice(&value.to_le_bytes());
 }
 
@@ -159,20 +161,20 @@ pub(crate) fn checked_u32(value: usize, what: &str) -> Result<u32, MathError> {
 }
 
 /// Write a `u32` collection length, rejecting a length above `u32::MAX`.
-fn write_count(count: usize, out: &mut Vec<u8>) -> Result<(), MathError> {
+pub(crate) fn write_count(count: usize, out: &mut Vec<u8>) -> Result<(), MathError> {
     write_u32(checked_u32(count, "collection length")?, out);
     Ok(())
 }
 
 /// Write a length-prefixed UTF-8 string, rejecting a byte length above `u32::MAX`.
-fn write_string(value: &str, out: &mut Vec<u8>) -> Result<(), MathError> {
+pub(crate) fn write_string(value: &str, out: &mut Vec<u8>) -> Result<(), MathError> {
     write_u32(checked_u32(value.len(), "string byte length")?, out);
     out.extend_from_slice(value.as_bytes());
     Ok(())
 }
 
 /// Write a `u32`-counted list of indices, rejecting any index above `u32::MAX`.
-fn write_indices(indices: &[usize], out: &mut Vec<u8>) -> Result<(), MathError> {
+pub(crate) fn write_indices(indices: &[usize], out: &mut Vec<u8>) -> Result<(), MathError> {
     write_count(indices.len(), out)?;
     for index in indices {
         write_u32(checked_u32(*index, "index")?, out);
@@ -180,7 +182,7 @@ fn write_indices(indices: &[usize], out: &mut Vec<u8>) -> Result<(), MathError> 
     Ok(())
 }
 
-fn read_indices(dec: &mut Decoder<'_>) -> Result<Vec<usize>, MathError> {
+pub(crate) fn read_indices(dec: &mut Decoder<'_>) -> Result<Vec<usize>, MathError> {
     let count = dec.read_u32()?;
     let mut indices = Vec::new();
     for _ in 0..count {
@@ -189,7 +191,7 @@ fn read_indices(dec: &mut Decoder<'_>) -> Result<Vec<usize>, MathError> {
     Ok(indices)
 }
 
-fn decode_values<T: Canonical>(
+pub(crate) fn decode_values<T: Canonical>(
     dec: &mut Decoder<'_>,
     require_non_empty: bool,
     empty_message: &str,
@@ -611,14 +613,14 @@ impl Canonical for EvaluationOutcome {
     }
 }
 
-fn encode_with_header<T: Canonical>(value: &T) -> Result<Vec<u8>, MathError> {
+pub(crate) fn encode_with_header<T: Canonical>(value: &T) -> Result<Vec<u8>, MathError> {
     let mut out = Vec::new();
     write_u32(SCHEMA_VERSION, &mut out);
     value.encode(&mut out)?;
     Ok(out)
 }
 
-fn decode_with_header<T: Canonical>(bytes: &[u8]) -> Result<T, MathError> {
+pub(crate) fn decode_with_header<T: Canonical>(bytes: &[u8]) -> Result<T, MathError> {
     let mut dec = Decoder::new(bytes);
     read_version(&mut dec)?;
     let value = T::decode(&mut dec)?;
@@ -626,7 +628,7 @@ fn decode_with_header<T: Canonical>(bytes: &[u8]) -> Result<T, MathError> {
     Ok(value)
 }
 
-fn encode_slice_with_header<T: Canonical>(items: &[T]) -> Result<Vec<u8>, MathError> {
+pub(crate) fn encode_slice_with_header<T: Canonical>(items: &[T]) -> Result<Vec<u8>, MathError> {
     let mut out = Vec::new();
     write_u32(SCHEMA_VERSION, &mut out);
     write_count(items.len(), &mut out)?;
@@ -636,7 +638,7 @@ fn encode_slice_with_header<T: Canonical>(items: &[T]) -> Result<Vec<u8>, MathEr
     Ok(out)
 }
 
-fn decode_slice_with_header<T: Canonical>(bytes: &[u8]) -> Result<Vec<T>, MathError> {
+pub(crate) fn decode_slice_with_header<T: Canonical>(bytes: &[u8]) -> Result<Vec<T>, MathError> {
     let mut dec = Decoder::new(bytes);
     read_version(&mut dec)?;
     let values = decode_values::<T>(&mut dec, false, "items")?;
@@ -644,7 +646,7 @@ fn decode_slice_with_header<T: Canonical>(bytes: &[u8]) -> Result<Vec<T>, MathEr
     Ok(values)
 }
 
-fn read_version(dec: &mut Decoder<'_>) -> Result<(), MathError> {
+pub(crate) fn read_version(dec: &mut Decoder<'_>) -> Result<(), MathError> {
     let version = dec.read_u32()?;
     if version != SCHEMA_VERSION {
         return Err(MathError::new(
@@ -655,7 +657,7 @@ fn read_version(dec: &mut Decoder<'_>) -> Result<(), MathError> {
     Ok(())
 }
 
-fn ensure_consumed(dec: &Decoder<'_>) -> Result<(), MathError> {
+pub(crate) fn ensure_consumed(dec: &Decoder<'_>) -> Result<(), MathError> {
     if dec.is_empty() {
         Ok(())
     } else {
@@ -781,6 +783,74 @@ pub fn encode_evaluation_outcome(outcome: &EvaluationOutcome) -> Result<Vec<u8>,
 /// # Errors
 /// See the module documentation for the full set of decode failures.
 pub fn decode_evaluation_outcome(bytes: &[u8]) -> Result<EvaluationOutcome, MathError> {
+    decode_with_header(bytes)
+}
+
+/// Encode a slice of objective descriptors with the schema-version header.
+///
+/// # Errors
+/// [`ErrorKind::IndexOutOfRange`] if the slice length or any descriptor index
+/// exceeds the `u32` wire-format range.
+pub fn encode_objective_descriptors(
+    descriptors: &[ObjectiveDescriptor],
+) -> Result<Vec<u8>, MathError> {
+    encode_slice_with_header(descriptors)
+}
+
+/// Decode a slice of objective descriptors produced by
+/// [`encode_objective_descriptors`].
+///
+/// # Errors
+/// [`ErrorKind::EmptyCollection`] if the encoded slice is empty, in addition to
+/// the module-level decode failures.
+pub fn decode_objective_descriptors(bytes: &[u8]) -> Result<Vec<ObjectiveDescriptor>, MathError> {
+    let mut dec = Decoder::new(bytes);
+    read_version(&mut dec)?;
+    let values = decode_values::<ObjectiveDescriptor>(
+        &mut dec,
+        true,
+        "objective descriptor collection must not be empty",
+    )?;
+    ensure_consumed(&dec)?;
+    Ok(values)
+}
+
+/// Encode a slice of constraint descriptors with the schema-version header.
+///
+/// # Errors
+/// [`ErrorKind::IndexOutOfRange`] if the slice length or any descriptor index
+/// exceeds the `u32` wire-format range.
+pub fn encode_constraint_descriptors(
+    descriptors: &[ConstraintDescriptor],
+) -> Result<Vec<u8>, MathError> {
+    encode_slice_with_header(descriptors)
+}
+
+/// Decode a slice of constraint descriptors produced by
+/// [`encode_constraint_descriptors`].
+///
+/// # Errors
+/// See the module documentation for the full set of decode failures.
+pub fn decode_constraint_descriptors(bytes: &[u8]) -> Result<Vec<ConstraintDescriptor>, MathError> {
+    decode_slice_with_header(bytes)
+}
+
+/// Encode a run manifest with the schema-version header.
+///
+/// # Errors
+/// [`ErrorKind::IndexOutOfRange`] if any payload exceeds the `u32` wire-format
+/// range.
+pub fn encode_run_manifest(manifest: &RunManifest) -> Result<Vec<u8>, MathError> {
+    encode_with_header(manifest)
+}
+
+/// Decode a run manifest produced by [`encode_run_manifest`].
+///
+/// # Errors
+/// See the module documentation for the full set of decode failures; the decoded
+/// manifest is rebuilt through its validating constructor so every collection
+/// invariant is re-enforced.
+pub fn decode_run_manifest(bytes: &[u8]) -> Result<RunManifest, MathError> {
     decode_with_header(bytes)
 }
 

@@ -1,6 +1,6 @@
-#![deny(missing_docs)]
+﻿#![deny(missing_docs)]
 #![forbid(unsafe_code)]
-//! # MAMUT Math — Core mathematical contracts (v0.1)
+//! # MAMUT Math â€” Core mathematical contracts (v0.1)
 //!
 //! Domain-agnostic contract layer consumed by every MAMUT Math optimizer and
 //! sensitivity engine. It defines *what* a mathematical optimization problem is
@@ -11,20 +11,27 @@
 //! - `f64` is the canonical scalar for V0.x (no generic `Scalar` parameter).
 //! - Third-party types never appear in public signatures; the crate has **no
 //!   external dependencies at all**.
-//! - Values are validated at construction: `NaN`/`±Inf` and inverted bounds are
+//! - Values are validated at construction: `NaN`/`Â±Inf` and inverted bounds are
 //!   rejected with a typed [`MathError`].
 //! - Serialization (see [`codec`]) is canonical, versioned and deterministic.
 //!
-//! ## Explicitly deferred (deliberately NOT defined here)
-//! Run manifests, checkpoint/replay and optimization evidence manifests are
-//! **out of scope** here and will be introduced by their own ticket
-//! (`MATH-EVD-001`). Random-number generation is provided by [`rng`]
-//! (`MATH-RNG-001`).
+//! ## Evidence and RNG contracts
+//! Run manifests and reproducibility evidence (`RunManifest`, `Fingerprint`,
+//! `StopReason`, `EvaluationRecord`, all in [evidence]) are generic,
+//! backend-neutral contracts owned by this crate: they record run identity,
+//! problem fingerprints, solver/backend versions, seed metadata, configs,
+//! evaluation counts, stop reasons, precision, targets, diagnostics and artifact
+//! hashes without embedding domain physics, normative logic, or secret material.
+//! Deterministic random-number generation and replay (`MamutRng`, `RngPort`,
+//! `Seed`, `RngMetadata`, in [rng], with `RngSpec` recorded as plain
+//! metadata by the evidence layer) are provided by `MATH-RNG-001`; the
+//! evidence types never reference RNG execution ports or checkpoint/replay.
 
 pub mod codec;
 pub mod constraint;
 pub mod error;
 pub mod evaluation;
+pub mod evidence;
 pub mod objective;
 pub mod rng;
 pub mod value;
@@ -49,3 +56,13 @@ pub use rng::{
 };
 pub use value::ValidFloat;
 pub use variable::{DiscreteSet, Variable, VariableId, VariableKind};
+
+pub use codec::{
+    decode_constraint_descriptors, decode_objective_descriptors, decode_run_manifest,
+    encode_constraint_descriptors, encode_objective_descriptors, encode_run_manifest,
+};
+pub use evidence::{
+    ArtifactHash, ConfigParam, ConfigValue, EvaluationRecord, EvidenceExport, Fingerprint,
+    Precision, RngSpec, RunId, RunKind, RunManifest, RunManifestParams, SolverVersion, StopReason,
+    FINGERPRINT_ALGORITHM_SHA256_V1, MANIFEST_VERSION,
+};
