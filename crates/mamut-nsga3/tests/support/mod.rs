@@ -8,4 +8,5 @@
 pub mod dtlz;
 pub mod harness;
 pub mod json;
+pub mod regression;
 pub mod rng;
