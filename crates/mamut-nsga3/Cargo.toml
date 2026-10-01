@@ -1,0 +1,9 @@
+[package]
+name = "mamut-nsga3"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+mamut-math-core = { path = "../mamut-math-core", version = "0.1" }
