@@ -1,0 +1,7 @@
+# MATH-VV-001: hash-pinned regression fixtures, validation docs and offline oracle
+# tooling must expand byte-identically in every worktree/checkout (the committed
+# SHA-256 fixture registry and the regeneration hook compare exact bytes).
+crates/mamut-nsga3/tests/fixtures/** text eol=lf
+docs/validation/** text eol=lf
+scripts/oracles/** text eol=lf
+
