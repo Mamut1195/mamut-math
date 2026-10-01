@@ -138,3 +138,79 @@ pub fn fast_nondominated_sort(fitnesses: &[Vec<f64>]) -> Result<Vec<Vec<usize>>,
 
     Ok(fronts)
 }
+
+/// Indices of the first (nondominated) Pareto front.
+///
+/// Thin helper over [`fast_nondominated_sort`]: it returns `fronts[0]`, the
+/// rank-1 front, preserving the frozen sort order. An empty fitness matrix has
+/// no rank-1 front and yields `Ok(vec![])` (nothing to validate); a non-empty
+/// matrix is validated exactly as by [`fast_nondominated_sort`].
+///
+/// # Errors
+/// Propagates the validation errors of [`fast_nondominated_sort`]:
+/// - [`mamut_math_core::ErrorKind::EmptyCollection`] when rows have `M == 0`.
+/// - [`mamut_math_core::ErrorKind::DimensionMismatch`] when arities differ.
+/// - [`mamut_math_core::ErrorKind::InvalidNotFinite`] on `NaN`/`±Inf` entries.
+pub fn extract_pareto_front(fitnesses: &[Vec<f64>]) -> Result<Vec<usize>, MathError> {
+    let fronts = fast_nondominated_sort(fitnesses)?;
+    Ok(fronts.into_iter().next().unwrap_or_default())
+}
+
+/// Return whether `indices` selects a mutually nondominated subset of
+/// `fitnesses` (all objectives minimized).
+///
+/// The subset is nondominated iff no selected individual dominates another
+/// selected individual (pairwise [`dominates`] semantics, computed over the
+/// validated matrix). A subset with fewer than two distinct indices is
+/// trivially nondominated; a repeated index forms no pair with itself.
+///
+/// This is the property-test hook for front purity: the rank-1 front returned
+/// by [`extract_pareto_front`] satisfies `is_nondominated_set` for every valid
+/// input.
+///
+/// # Errors
+/// - [`mamut_math_core::ErrorKind::EmptyCollection`] when a non-empty matrix
+///   has rows with `M == 0`.
+/// - [`mamut_math_core::ErrorKind::DimensionMismatch`] when arities differ.
+/// - [`mamut_math_core::ErrorKind::InvalidNotFinite`] on `NaN`/`±Inf` entries.
+/// - [`mamut_math_core::ErrorKind::IndexOutOfRange`] when an index is not
+///   `< fitnesses.len()` (including any index against an empty matrix).
+pub fn is_nondominated_set(fitnesses: &[Vec<f64>], indices: &[usize]) -> Result<bool, MathError> {
+    use mamut_math_core::ErrorKind;
+
+    let n = fitnesses.len();
+    if n == 0 {
+        if indices.is_empty() {
+            return Ok(true);
+        }
+        return Err(MathError::new(
+            ErrorKind::IndexOutOfRange,
+            format!(
+                "is_nondominated_set: index {} into an empty fitness matrix",
+                indices[0]
+            ),
+        ));
+    }
+
+    let m = internal::arity(fitnesses);
+    internal::validate_fitness_matrix(fitnesses, m)?;
+
+    for &index in indices {
+        if index >= n {
+            return Err(MathError::new(
+                ErrorKind::IndexOutOfRange,
+                format!("is_nondominated_set: index {index} out of range (N = {n})"),
+            ));
+        }
+    }
+
+    for &a in indices {
+        for &b in indices {
+            if a != b && dominates_unchecked(&fitnesses[a], &fitnesses[b]) {
+                return Ok(false);
+            }
+        }
+    }
+
+    Ok(true)
+}
