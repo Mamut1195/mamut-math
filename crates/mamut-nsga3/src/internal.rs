@@ -1,8 +1,11 @@
 //! Internal helpers shared by the NSGA-III kernels.
 //!
 //! This module is private (not part of the public API): it centralizes the
-//! dynamic-`M` validation, the `f64` <-> core-type conversions and the
-//! `gen_range`-equivalent index sampling. None of these symbols are exported.
+//! dynamic-`M` validation, the `f64` <-> core-type conversions and the dispatch
+//! to the core port's index sampling ([`RngPort::next_index`]). None of these
+//! symbols are exported.
+
+use core::num::NonZeroUsize;
 
 use mamut_math_core::{
     Candidate, ErrorKind, MathError, ObjectiveValues, RngPort, ValidFloat, Variable, VariableKind,
@@ -71,28 +74,34 @@ pub(crate) fn objective_vector(objectives: &ObjectiveValues) -> Vec<f64> {
     objectives.iter().map(ValidFloat::get).collect()
 }
 
-/// `gen_range(0..n)`-equivalent unbiased index sampler over the MAMUT RNG port.
+/// `gen_range(0..n)`-equivalent uniform index sampler over the MAMUT RNG port.
 ///
-/// Implements the "multiply-high with rejection" (Lemire) method so the result
-/// is uniformly distributed over `0..n` without modulo bias. Normally consumes
-/// exactly one `u64`; the rejection loop only triggers with probability
-/// `< n / 2^64`. `n` must be `>= 1` (documented precondition).
+/// For `n >= 1` this is a thin dispatcher to [`RngPort::next_index`]: the
+/// sampling algorithm (multiply-high with rejection) lives once in the core
+/// port, so the operators hold no private sampling body and a consumer can
+/// substitute the distribution through an overriding port.
+///
+/// # Zero bound (historical behavior preserved)
+/// - Debug builds: `debug_assert!(n >= 1)` panics before any raw draw.
+/// - Release builds: `n == 0` consumes exactly one raw `u64` and returns `0`
+///   without evaluating `2^64 % 0`, matching the pre-port private body.
+///
+/// The pre-existing `u64 -> usize` cast in `operators::sample_gene`
+/// (`crates/mamut-nsga3/src/operators.rs`) is unchanged: on a 32-bit target a
+/// categorical cardinality of `2^32` still truncates to `0` and reaches this
+/// zero path (the historical 32-bit behavior, not a new API contract).
 pub(crate) fn gen_index(rng: &mut dyn RngPort, n: usize) -> usize {
     debug_assert!(n >= 1, "gen_index requires n >= 1");
-    let n = n as u64;
-    let mut x = rng.next_u64();
-    let mut m = (x as u128) * (n as u128);
-    let mut low = m as u64;
-    if low < n {
-        // 2^64 % n, computed without overflow.
-        let threshold = n.wrapping_neg() % n;
-        while low < threshold {
-            x = rng.next_u64();
-            m = (x as u128) * (n as u128);
-            low = m as u64;
+    match NonZeroUsize::new(n) {
+        Some(upper) => rng.next_index(upper),
+        None => {
+            // Historical debug-disabled body: the single raw draw makes the
+            // product and its low word `0`, `low < n` is false, so the result
+            // is `0` with no `% 0` evaluation.
+            let _ = rng.next_u64();
+            0
         }
     }
-    (m >> 64) as usize
 }
 
 /// Raw `f64` interval `[lower, upper]` of a core variable.
@@ -114,5 +123,77 @@ pub(crate) fn variable_bounds(variable: &Variable) -> (f64, f64) {
             (vals[0].get(), vals[vals.len() - 1].get())
         }
         VariableKind::Categorical { cardinality } => (0.0, *cardinality as f64 - 1.0),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use mamut_math_core::{RngMetadata, RNG_ALGORITHM_ID, RNG_ALGORITHM_VERSION};
+    use std::panic::{catch_unwind, AssertUnwindSafe};
+
+    /// Minimal port using only the pre-port trait methods: it counts raw `u64`
+    /// draws and never overrides `next_index`.
+    struct CountingPort {
+        word_draws: usize,
+    }
+
+    impl RngPort for CountingPort {
+        fn next_u32(&mut self) -> u32 {
+            self.next_u64() as u32
+        }
+
+        fn next_u64(&mut self) -> u64 {
+            self.word_draws += 1;
+            0
+        }
+
+        fn next_unit_f64(&mut self) -> f64 {
+            0.0
+        }
+
+        fn fill_bytes(&mut self, dst: &mut [u8]) {
+            for byte in dst.iter_mut() {
+                *byte = 0;
+            }
+        }
+
+        fn metadata(&self) -> RngMetadata {
+            RngMetadata::new(
+                RNG_ALGORITHM_ID,
+                RNG_ALGORITHM_VERSION,
+                [0u8; 8],
+                Vec::new(),
+                0,
+            )
+            .expect("frozen algorithm id is valid")
+        }
+
+        fn derive_child_port(&self, _stream_index: u64) -> Box<dyn RngPort> {
+            Box::new(CountingPort { word_draws: 0 })
+        }
+    }
+
+    /// Historical zero-bound behavior, per profile:
+    /// - debug: `debug_assert!(n >= 1)` panics before any raw draw;
+    /// - release: exactly one raw `u64` is consumed and `0` is returned, with
+    ///   no `2^64 % 0` evaluation.
+    #[test]
+    fn gen_index_zero_preserves_historical_behavior() {
+        let mut rng = CountingPort { word_draws: 0 };
+        if cfg!(debug_assertions) {
+            let outcome = catch_unwind(AssertUnwindSafe(|| gen_index(&mut rng, 0)));
+            assert!(outcome.is_err(), "debug: zero bound must panic");
+            assert_eq!(
+                rng.word_draws, 0,
+                "debug: the zero-bound panic must precede any raw draw"
+            );
+        } else {
+            assert_eq!(gen_index(&mut rng, 0), 0, "release: zero bound returns 0");
+            assert_eq!(
+                rng.word_draws, 1,
+                "release: zero bound consumes exactly one raw u64"
+            );
+        }
     }
 }

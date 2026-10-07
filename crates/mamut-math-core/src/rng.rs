@@ -71,9 +71,26 @@
 //! ### Seed fingerprint (frozen v1)
 //! `fingerprint(seed) = chacha20_block(seed, 0, b"MAM-FINGERPR")[0..8]`.
 //!
+//! ### Uniform index sampling (additive, v1)
+//! [`RngPort::next_index`] returns a uniform index in `0..upper_exclusive`
+//! using the "multiply-high with rejection" (Lemire) method. Its default body
+//! is the single active implementation of that sampler: it consumes raw `u64`
+//! draws through [`RngPort::next_u64`] and never short-circuits the trivial
+//! bound of one — an `upper_exclusive` of `1` still consumes one draw so the
+//! historical stream position of the NSGA-III operators is preserved.
+//!
+//! The surface is **additive**: it changes no keystream, seed expansion,
+//! derivation rule or metadata byte, so it does not require a new algorithm
+//! version. Existing implementors of [`RngPort`] keep compiling unchanged and
+//! receive the default sampler. An implementor may override it to substitute a
+//! different distribution, and must then return a value in
+//! `0..upper_exclusive`. The bound is standard [`core::num::NonZeroUsize`]; no
+//! third-party type enters the public contract.
+//!
 //! [RFC 7539]: https://www.rfc-editor.org/rfc/rfc7539
 
 use core::fmt;
+use core::num::NonZeroUsize;
 
 use crate::codec::checked_u32;
 use crate::error::{ErrorKind, MathError};
@@ -238,6 +255,37 @@ pub trait RngPort {
     /// Canonical formula: `(next_u64() >> 11) as f64 * 2^-53`, which draws 53
     /// significand bits and can never return `1.0`.
     fn next_unit_f64(&mut self) -> f64;
+
+    /// Return a uniform index in `0..upper_exclusive`.
+    ///
+    /// Default implementation of the "multiply-high with rejection" (Lemire)
+    /// sampler: it draws raw `u64` words through [`RngPort::next_u64`] and maps
+    /// them onto `0..upper_exclusive` without modulo bias. Normally one draw is
+    /// consumed; the rejection loop only triggers with probability
+    /// `< upper_exclusive / 2^64`.
+    ///
+    /// The bound is a [`NonZeroUsize`], so the `0..n` contract with `n >= 1` is
+    /// expressed in the type. An `upper_exclusive` of `1` still consumes one
+    /// raw draw (no shortcut), matching the frozen NSGA-III stream position.
+    ///
+    /// Overriding implementors substitute their own distribution and **must**
+    /// return a value in `0..upper_exclusive`.
+    fn next_index(&mut self, upper_exclusive: NonZeroUsize) -> usize {
+        let n = upper_exclusive.get() as u64;
+        let mut x = self.next_u64();
+        let mut m = (x as u128) * (n as u128);
+        let mut low = m as u64;
+        if low < n {
+            // 2^64 % n, computed without overflow.
+            let threshold = n.wrapping_neg() % n;
+            while low < threshold {
+                x = self.next_u64();
+                m = (x as u128) * (n as u128);
+                low = m as u64;
+            }
+        }
+        (m >> 64) as usize
+    }
 
     /// Fill `dst` with the next bytes of the stream.
     fn fill_bytes(&mut self, dst: &mut [u8]);
