@@ -31,12 +31,14 @@
 //! - [`niching`] — association, niche counts and partial-front selection.
 //! - [`selection`] — environmental selection wrapper.
 //! - [`operators`] — SBX, polynomial mutation, `varOr`, adaptive eta, init.
+//! - [`ieee`] — raw `f64` (IEEE, unsanitised `NaN`/`±Inf`) variation route.
 //! - [`config`] — [`config::Nsga3Config`].
 //! - [`session`] — ask/tell [`session::Nsga3Session`].
 //! - [`error`] — the core [`mamut_math_core::MathError`] error surface.
 
 pub mod config;
 pub mod error;
+pub mod ieee;
 pub mod metrics;
 pub mod niching;
 pub mod nondom_sort;

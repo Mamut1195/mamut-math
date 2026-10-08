@@ -79,6 +79,44 @@ impl Individual {
     }
 }
 
+/// Private strategy that lets ONE variation kernel serve both the checked
+/// [`Individual`] (finite [`Candidate`] genes) and the raw
+/// [`crate::ieee::Individual`] (unvalidated `f64` genes).
+///
+/// The kernels own all arithmetic, guard ordering, draw order and cache
+/// invalidation. An implementation only decides how genes are read/written and
+/// whether writing validates finiteness. The trait is crate-private: it adds no
+/// public generic and leaves every existing public signature unchanged.
+pub(crate) trait KernelIndividual: Clone {
+    /// Chromosome arity used by the structural guards.
+    fn arity(&self) -> usize;
+    /// Read the current genes as raw `f64`.
+    fn raw_genes(&self) -> Vec<f64>;
+    /// Write new genes; the checked implementation rejects non-finite values.
+    fn assign_genes(&mut self, genes: Vec<f64>) -> Result<(), MathError>;
+    /// Clear the cached fitness/feasibility, matching the typed lifecycle.
+    fn invalidate_cache(&mut self);
+}
+
+impl KernelIndividual for Individual {
+    fn arity(&self) -> usize {
+        self.candidate.len()
+    }
+
+    fn raw_genes(&self) -> Vec<f64> {
+        internal::genes_of(&self.candidate)
+    }
+
+    fn assign_genes(&mut self, genes: Vec<f64>) -> Result<(), MathError> {
+        self.candidate = internal::candidate_from_f64(genes)?;
+        Ok(())
+    }
+
+    fn invalidate_cache(&mut self) {
+        self.invalidate();
+    }
+}
+
 /// Linear interpolation of eta from `eta_min` to `eta_max` over `max_gen`
 /// generations.
 ///
@@ -109,8 +147,27 @@ pub fn sbx_crossover(
     eta: f64,
     rng: &mut dyn RngPort,
 ) -> Result<(), MathError> {
+    sbx_crossover_kernel(parent1, parent2, variables, eta, rng)
+}
+
+/// Shared SBX arithmetic body for every [`KernelIndividual`] strategy.
+///
+/// # Errors
+/// - [`mamut_math_core::ErrorKind::EmptyCollection`] when `variables` and both
+///   chromosomes are empty.
+/// - [`mamut_math_core::ErrorKind::DimensionMismatch`] when a chromosome's
+///   arity differs from `variables.len()`.
+/// - The [`KernelIndividual::assign_genes`] error of the checked strategy when
+///   a child gene is not finite.
+pub(crate) fn sbx_crossover_kernel<I: KernelIndividual>(
+    parent1: &mut I,
+    parent2: &mut I,
+    variables: &[Variable],
+    eta: f64,
+    rng: &mut dyn RngPort,
+) -> Result<(), MathError> {
     let len = variables.len();
-    if parent1.candidate.len() != len || parent2.candidate.len() != len {
+    if parent1.arity() != len || parent2.arity() != len {
         return Err(MathError::new(
             mamut_math_core::ErrorKind::DimensionMismatch,
             "sbx_crossover: chromosome length does not match variable count",
@@ -123,8 +180,8 @@ pub fn sbx_crossover(
         ));
     }
 
-    let mut g1 = internal::genes_of(&parent1.candidate);
-    let mut g2 = internal::genes_of(&parent2.candidate);
+    let mut g1 = parent1.raw_genes();
+    let mut g2 = parent2.raw_genes();
 
     for (i, variable) in variables.iter().enumerate() {
         let (lb, ub) = internal::variable_bounds(variable);
@@ -163,10 +220,10 @@ pub fn sbx_crossover(
         }
     }
 
-    parent1.candidate = internal::candidate_from_f64(g1)?;
-    parent2.candidate = internal::candidate_from_f64(g2)?;
-    parent1.invalidate();
-    parent2.invalidate();
+    parent1.assign_genes(g1)?;
+    parent2.assign_genes(g2)?;
+    parent1.invalidate_cache();
+    parent2.invalidate_cache();
     Ok(())
 }
 
@@ -195,8 +252,27 @@ pub fn polynomial_mutation(
     eta: f64,
     rng: &mut dyn RngPort,
 ) -> Result<(), MathError> {
+    polynomial_mutation_kernel(individual, variables, eta, rng)
+}
+
+/// Shared polynomial-mutation arithmetic body for every [`KernelIndividual`]
+/// strategy.
+///
+/// # Errors
+/// - [`mamut_math_core::ErrorKind::EmptyCollection`] when `variables` and the
+///   chromosome are empty.
+/// - [`mamut_math_core::ErrorKind::DimensionMismatch`] when the chromosome's
+///   arity differs from `variables.len()`.
+/// - The [`KernelIndividual::assign_genes`] error of the checked strategy when
+///   a gene is not finite.
+pub(crate) fn polynomial_mutation_kernel<I: KernelIndividual>(
+    individual: &mut I,
+    variables: &[Variable],
+    eta: f64,
+    rng: &mut dyn RngPort,
+) -> Result<(), MathError> {
     let len = variables.len();
-    if individual.candidate.len() != len {
+    if individual.arity() != len {
         return Err(MathError::new(
             mamut_math_core::ErrorKind::DimensionMismatch,
             "polynomial_mutation: chromosome length does not match variable count",
@@ -210,7 +286,7 @@ pub fn polynomial_mutation(
     }
 
     let indpb = 1.0 / len.max(1) as f64;
-    let mut genes = internal::genes_of(&individual.candidate);
+    let mut genes = individual.raw_genes();
     let mut mutated = false;
 
     for (i, variable) in variables.iter().enumerate() {
@@ -232,9 +308,9 @@ pub fn polynomial_mutation(
         genes[i] = (x + delta * dx).clamp(lb, ub);
     }
 
-    individual.candidate = internal::candidate_from_f64(genes)?;
+    individual.assign_genes(genes)?;
     if mutated {
-        individual.invalidate();
+        individual.invalidate_cache();
     }
     Ok(())
 }
@@ -281,6 +357,25 @@ pub fn var_or(
     eta: f64,
     rng: &mut dyn RngPort,
 ) -> Result<Vec<Individual>, MathError> {
+    var_or_kernel(population, variables, lambda, cxpb, mutpb, eta, rng)
+}
+
+/// Shared `varOr` arithmetic body for every [`KernelIndividual`] strategy.
+///
+/// # Errors
+/// - [`mamut_math_core::ErrorKind::InvertedBounds`] when `cxpb + mutpb > 1`.
+/// - [`mamut_math_core::ErrorKind::EmptyCollection`] when `population` or
+///   `variables` is empty.
+/// - The SBX/mutation error of the selected [`KernelIndividual`] strategy.
+pub(crate) fn var_or_kernel<I: KernelIndividual>(
+    population: &[I],
+    variables: &[Variable],
+    lambda: usize,
+    cxpb: f64,
+    mutpb: f64,
+    eta: f64,
+    rng: &mut dyn RngPort,
+) -> Result<Vec<I>, MathError> {
     if cxpb + mutpb > 1.0 + 1e-9 {
         return Err(MathError::new(
             mamut_math_core::ErrorKind::InvertedBounds,
@@ -300,7 +395,7 @@ pub fn var_or(
         ));
     }
 
-    let mut offspring: Vec<Individual> = Vec::with_capacity(lambda);
+    let mut offspring: Vec<I> = Vec::with_capacity(lambda);
     let n = population.len();
 
     while offspring.len() < lambda {
@@ -312,7 +407,7 @@ pub fn var_or(
             let i2 = internal::gen_index(rng, n);
             let mut child1 = population[i1].clone();
             let mut child2 = population[i2].clone();
-            sbx_crossover(&mut child1, &mut child2, variables, eta, rng)?;
+            sbx_crossover_kernel(&mut child1, &mut child2, variables, eta, rng)?;
             offspring.push(child1);
             if offspring.len() < lambda {
                 offspring.push(child2);
@@ -321,7 +416,7 @@ pub fn var_or(
             // Mutation.
             let i = internal::gen_index(rng, n);
             let mut child = population[i].clone();
-            polynomial_mutation(&mut child, variables, eta, rng)?;
+            polynomial_mutation_kernel(&mut child, variables, eta, rng)?;
             offspring.push(child);
         } else {
             // Reproduction — exact clone.
