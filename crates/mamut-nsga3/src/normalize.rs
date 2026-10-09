@@ -14,6 +14,7 @@
 
 use mamut_math_core::MathError;
 
+use crate::ieee_selection::FinitePolicy;
 use crate::internal;
 
 /// Result of the normalization step.
@@ -38,6 +39,19 @@ pub struct NormalizeResult {
 /// - [`mamut_math_core::ErrorKind::DimensionMismatch`] on ragged input.
 /// - [`mamut_math_core::ErrorKind::InvalidNotFinite`] on non-finite entries.
 pub fn normalize(fitnesses: &[Vec<f64>]) -> Result<NormalizeResult, MathError> {
+    normalize_kernel(fitnesses, FinitePolicy::Checked)
+}
+
+/// Shared checked/raw normalization body.
+///
+/// The [`FinitePolicy`] toggles only the finiteness gates (the input matrix and
+/// the intercept solve). The ideal point, the ASF extreme points, the Gaussian
+/// elimination and the intercept-divide arithmetic are identical for both
+/// routes.
+pub(crate) fn normalize_kernel(
+    fitnesses: &[Vec<f64>],
+    policy: FinitePolicy,
+) -> Result<NormalizeResult, MathError> {
     let n = fitnesses.len();
     if n == 0 {
         return Ok(NormalizeResult {
@@ -48,7 +62,7 @@ pub fn normalize(fitnesses: &[Vec<f64>]) -> Result<NormalizeResult, MathError> {
     }
 
     let m = internal::arity(fitnesses);
-    internal::validate_fitness_matrix(fitnesses, m)?;
+    policy.validate_matrix(fitnesses, m)?;
 
     // ── Step 1: ideal point (per-objective minimum) ─────────────────────
     let mut ideal = vec![f64::INFINITY; m];
@@ -76,7 +90,7 @@ pub fn normalize(fitnesses: &[Vec<f64>]) -> Result<NormalizeResult, MathError> {
     let extreme_points = find_extreme_points(&translated, m);
 
     // ── Step 4: solve M×M system for intercepts ─────────────────────────
-    let intercepts = compute_intercepts(&extreme_points, &translated, m);
+    let intercepts = compute_intercepts(&extreme_points, &translated, m, policy);
 
     // ── Step 5: divide by intercepts ────────────────────────────────────
     let normalized: Vec<Vec<f64>> = translated
@@ -137,7 +151,12 @@ fn compute_asf(f: &[f64], axis: usize) -> f64 {
 ///
 /// Falls back to per-objective maximum when the system is degenerate
 /// (`|pivot| < 1e-12`) or any intercept is `<= 0`.
-fn compute_intercepts(extreme_points: &[Vec<f64>], translated: &[Vec<f64>], m: usize) -> Vec<f64> {
+fn compute_intercepts(
+    extreme_points: &[Vec<f64>],
+    translated: &[Vec<f64>],
+    m: usize,
+    policy: FinitePolicy,
+) -> Vec<f64> {
     // Build augmented matrix [A | b] where b = [1; 1; ...; 1].
     let mut a = vec![vec![0.0_f64; m + 1]; m];
     for i in 0..m {
@@ -191,7 +210,9 @@ fn compute_intercepts(extreme_points: &[Vec<f64>], translated: &[Vec<f64>], m: u
     // Intercepts: a_j = 1 / x_j.
     let mut intercepts = vec![0.0_f64; m];
     for j in 0..m {
-        if x[j] <= 0.0 || !x[j].is_finite() {
+        // Checked route rejects a non-finite solve component (finiteness gate);
+        // the raw route skips ONLY this check and lets the IEEE value flow.
+        if x[j] <= 0.0 || (policy.checks_finite() && !x[j].is_finite()) {
             return fallback_intercepts(translated, m);
         }
         intercepts[j] = 1.0 / x[j];

@@ -8,6 +8,7 @@
 
 use mamut_math_core::MathError;
 
+use crate::ieee_selection::FinitePolicy;
 use crate::internal;
 
 /// Determine whether individual `p` dominates individual `q` under minimisation.
@@ -88,13 +89,25 @@ fn dominates_unchecked(p: &[f64], q: &[f64]) -> bool {
 /// - [`mamut_math_core::ErrorKind::DimensionMismatch`] when arities differ.
 /// - [`mamut_math_core::ErrorKind::InvalidNotFinite`] on `NaN`/`±Inf` entries.
 pub fn fast_nondominated_sort(fitnesses: &[Vec<f64>]) -> Result<Vec<Vec<usize>>, MathError> {
+    fast_nondominated_sort_kernel(fitnesses, FinitePolicy::Checked)
+}
+
+/// Shared checked/raw nondominated-sort body.
+///
+/// The [`FinitePolicy`] toggles only the finiteness gate; the Deb-2002 loop
+/// order, the insertion-order tie-break and the front concatenation are
+/// identical for both routes.
+pub(crate) fn fast_nondominated_sort_kernel(
+    fitnesses: &[Vec<f64>],
+    policy: FinitePolicy,
+) -> Result<Vec<Vec<usize>>, MathError> {
     let n = fitnesses.len();
     if n == 0 {
         return Ok(Vec::new());
     }
 
     let m = internal::arity(fitnesses);
-    internal::validate_fitness_matrix(fitnesses, m)?;
+    policy.validate_matrix(fitnesses, m)?;
 
     // domination_count[p] = number of individuals that dominate p.
     let mut domination_count: Vec<usize> = vec![0; n];

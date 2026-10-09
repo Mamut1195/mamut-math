@@ -15,6 +15,7 @@
 
 use mamut_math_core::{ErrorKind, MathError};
 
+use crate::ieee_selection::FinitePolicy;
 use crate::internal;
 
 /// Perpendicular distance from point `p` to the reference line through the
@@ -29,6 +30,19 @@ use crate::internal;
 /// - [`ErrorKind::InvalidNotFinite`] when any component of `p` or `r` is
 ///   `NaN`/`±Inf` (the degenerate `1e-30` guard applies only to finite inputs).
 pub fn perp_distance(p: &[f64], r: &[f64]) -> Result<f64, MathError> {
+    perp_distance_kernel(p, r, FinitePolicy::Checked)
+}
+
+/// Shared checked/raw perpendicular-distance body.
+///
+/// The [`FinitePolicy`] toggles only the finiteness gate; the empty/arity
+/// structural guards, the `1e-30` degenerate-reference guard and the arithmetic
+/// are identical for both routes.
+pub(crate) fn perp_distance_kernel(
+    p: &[f64],
+    r: &[f64],
+    policy: FinitePolicy,
+) -> Result<f64, MathError> {
     if p.is_empty() {
         return Err(MathError::new(
             ErrorKind::EmptyCollection,
@@ -45,20 +59,22 @@ pub fn perp_distance(p: &[f64], r: &[f64]) -> Result<f64, MathError> {
             ),
         ));
     }
-    for (index, &value) in p.iter().enumerate() {
-        if !value.is_finite() {
-            return Err(MathError::new(
-                ErrorKind::InvalidNotFinite,
-                format!("perp_distance: non-finite point component at [{index}]"),
-            ));
+    if policy.checks_finite() {
+        for (index, &value) in p.iter().enumerate() {
+            if !value.is_finite() {
+                return Err(MathError::new(
+                    ErrorKind::InvalidNotFinite,
+                    format!("perp_distance: non-finite point component at [{index}]"),
+                ));
+            }
         }
-    }
-    for (index, &value) in r.iter().enumerate() {
-        if !value.is_finite() {
-            return Err(MathError::new(
-                ErrorKind::InvalidNotFinite,
-                format!("perp_distance: non-finite reference component at [{index}]"),
-            ));
+        for (index, &value) in r.iter().enumerate() {
+            if !value.is_finite() {
+                return Err(MathError::new(
+                    ErrorKind::InvalidNotFinite,
+                    format!("perp_distance: non-finite reference component at [{index}]"),
+                ));
+            }
         }
     }
 
@@ -93,6 +109,19 @@ pub fn associate(
     normalized: &[Vec<f64>],
     refs: &[Vec<f64>],
 ) -> Result<Vec<(usize, f64)>, MathError> {
+    associate_kernel(normalized, refs, FinitePolicy::Checked)
+}
+
+/// Shared checked/raw association body.
+///
+/// The [`FinitePolicy`] toggles only the finiteness gates (the normalized
+/// matrix and the reference entries); the empty/arity structural guards and the
+/// nearest-reference arithmetic are identical for both routes.
+pub(crate) fn associate_kernel(
+    normalized: &[Vec<f64>],
+    refs: &[Vec<f64>],
+    policy: FinitePolicy,
+) -> Result<Vec<(usize, f64)>, MathError> {
     if refs.is_empty() {
         return Err(MathError::new(
             ErrorKind::EmptyCollection,
@@ -104,7 +133,7 @@ pub fn associate(
     }
 
     let m = internal::arity(normalized);
-    internal::validate_fitness_matrix(normalized, m)?;
+    policy.validate_matrix(normalized, m)?;
     for (index, r) in refs.iter().enumerate() {
         if r.len() != m {
             return Err(MathError::new(
@@ -115,12 +144,14 @@ pub fn associate(
                 ),
             ));
         }
-        for (j, &value) in r.iter().enumerate() {
-            if !value.is_finite() {
-                return Err(MathError::new(
-                    ErrorKind::InvalidNotFinite,
-                    format!("associate: non-finite reference entry at {index}, {j}"),
-                ));
+        if policy.checks_finite() {
+            for (j, &value) in r.iter().enumerate() {
+                if !value.is_finite() {
+                    return Err(MathError::new(
+                        ErrorKind::InvalidNotFinite,
+                        format!("associate: non-finite reference entry at {index}, {j}"),
+                    ));
+                }
             }
         }
     }
@@ -130,7 +161,7 @@ pub fn associate(
         let mut best_ref = 0_usize;
         let mut best_dist = f64::INFINITY;
         for (ref_index, r) in refs.iter().enumerate() {
-            let d = perp_distance(p, r)?;
+            let d = perp_distance_kernel(p, r, policy)?;
             if d < best_dist {
                 best_dist = d;
                 best_ref = ref_index;

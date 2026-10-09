@@ -15,10 +15,11 @@
 use mamut_math_core::MathError;
 use mamut_math_core::RngPort;
 
+use crate::ieee_selection::FinitePolicy;
 use crate::internal;
-use crate::niching::{associate, build_niche_counts, select_from_partial_front};
-use crate::nondom_sort::fast_nondominated_sort;
-use crate::normalize::normalize;
+use crate::niching::{associate_kernel, build_niche_counts, select_from_partial_front};
+use crate::nondom_sort::fast_nondominated_sort_kernel;
+use crate::normalize::normalize_kernel;
 
 /// Select `n` individuals from a population using NSGA-III environmental
 /// selection.
@@ -47,6 +48,21 @@ pub fn select_environmental(
     ref_points: &[Vec<f64>],
     _rng: &mut dyn RngPort,
 ) -> Result<Vec<usize>, MathError> {
+    select_environmental_kernel(fitnesses, n, ref_points, _rng, FinitePolicy::Checked)
+}
+
+/// Shared checked/raw environmental-selection body.
+///
+/// This is the single arithmetic body for both routes. The [`FinitePolicy`]
+/// only toggles the finiteness gates: the structural checks, the early returns
+/// and the sort/normalize/associate/niche arithmetic are identical.
+pub(crate) fn select_environmental_kernel(
+    fitnesses: &[Vec<f64>],
+    n: usize,
+    ref_points: &[Vec<f64>],
+    _rng: &mut dyn RngPort,
+    policy: FinitePolicy,
+) -> Result<Vec<usize>, MathError> {
     let pop_size = fitnesses.len();
 
     if pop_size == 0 || n == 0 {
@@ -57,10 +73,10 @@ pub fn select_environmental(
     }
 
     let m = internal::arity(fitnesses);
-    internal::validate_fitness_matrix(fitnesses, m)?;
+    policy.validate_matrix(fitnesses, m)?;
 
     // ── Step 1: fast nondominated sort ──────────────────────────────────
-    let fronts = fast_nondominated_sort(fitnesses)?;
+    let fronts = fast_nondominated_sort_kernel(fitnesses, policy)?;
 
     // ── Step 2: fill front-by-front until the splitting front ───────────
     let mut selected: Vec<usize> = Vec::with_capacity(n);
@@ -99,13 +115,13 @@ pub fn select_environmental(
         .map(|&i| fitnesses[i].clone())
         .collect();
 
-    let norm_result = normalize(&candidate_fitnesses)?;
+    let norm_result = normalize_kernel(&candidate_fitnesses, policy)?;
 
     // ── Step 4: associate ALL candidates to reference points ────────────
     // Association table indexed by ORIGINAL population index.
     // Unused entries default to (0, f64::INFINITY).
     let mut assoc: Vec<(usize, f64)> = vec![(0, f64::INFINITY); pop_size];
-    let candidate_assoc = associate(&norm_result.normalized, ref_points)?;
+    let candidate_assoc = associate_kernel(&norm_result.normalized, ref_points, policy)?;
     for (pos, &orig_idx) in all_candidates.iter().enumerate() {
         assoc[orig_idx] = candidate_assoc[pos];
     }

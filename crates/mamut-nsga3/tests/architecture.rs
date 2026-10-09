@@ -4,8 +4,8 @@
 
 use mamut_math_core::rng::MamutRng;
 use mamut_math_core::{
-    Candidate, EvaluationOutcome, Feasibility, MathError, ObjectiveValues, Seed, ValidFloat,
-    Variable, VariableId, VariableKind,
+    Candidate, EvaluationOutcome, Feasibility, MathError, ObjectiveValues, RngPort, Seed,
+    ValidFloat, Variable, VariableId, VariableKind,
 };
 use mamut_nsga3::{
     adaptive_eta_value, associate, fast_nondominated_sort, init_population, normalize,
@@ -169,4 +169,15 @@ fn metrics_surface_uses_only_core_types() {
         mamut_nsga3::denormalize_from_unit_box;
     let _: fn(&[Vec<f64>]) -> Result<Vec<usize>, MathError> = mamut_nsga3::extract_pareto_front;
     let _: fn(&[Vec<f64>], &[usize]) -> Result<bool, MathError> = mamut_nsga3::is_nondominated_set;
+}
+
+/// The M2 IEEE selection surface (MATH-E2E-001) exposes exactly one raw
+/// environmental-selection entry using only core MAMUT types — `f64`/`usize`/`Vec`
+/// plus the core [`RngPort`] and `MathError`; no third-party type crosses the
+/// crate boundary. This is additive to the checked `select_environmental`.
+#[test]
+#[allow(clippy::type_complexity)]
+fn ieee_selection_surface_is_one_raw_entry_with_core_types() {
+    let _: fn(&[Vec<f64>], usize, &[Vec<f64>], &mut dyn RngPort) -> Result<Vec<usize>, MathError> =
+        mamut_nsga3::ieee_selection::select_environmental;
 }
