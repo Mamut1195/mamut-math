@@ -85,8 +85,34 @@ Each report records `code_sha` (`MAMUT_GIT_SHA`, else the committed base SHA),
 `corpus`, `oracle_provenance` (pymoo/DEAP/numpy/python versions,
 `mamut_crate_used = false`, DTLZ7 PF certification), `gates` (each with category,
 lane, status, thresholds, observed, rationale) and `artifact_hashes` (the
-fixture SHA-256 registry). It reuses the MATH-EVD-001 evidence types
+actual raw on-disk fixture SHA-256 hashes). It reuses the MATH-EVD-001 evidence types
 (`ArtifactHash`, `RngSpec`, `SolverVersion`).
+
+### Historical registry comparison policy
+
+The committed registry retains its existing digests. Exactly these five paths
+use `canonical-crlf-v1` for registry comparison (relative to the repository root):
+
+* `crates/mamut-nsga3/tests/fixtures/conformance/component_oracle.json`
+* `crates/mamut-nsga3/tests/fixtures/conformance/pymoo_dtlz_oracle.json`
+* `crates/mamut-nsga3/tests/fixtures/conformance/LITERATURE_CHECKLIST.md`
+* `crates/mamut-nsga3/tests/fixtures/conformance/provenance.md`
+* `crates/mamut-nsga3/tests/fixtures/metrics_5d_golden.json`
+
+This policy maps LF and CRLF (including mixtures) to CRLF, rejects lone CR,
+and preserves every other byte, including whitespace, BOM and final-newline
+presence. `legacy_provenance.json`, the sixth registry entry, and all future or
+unknown paths use strict raw-byte SHA-256. The allowlist is explicit, not based
+on position, extension or directory.
+
+The historical raw-byte registry check failed on the LF Cargo Git checkout at
+`b0f4fcd2740109a1e52f9f7fc699588e90d379fd`: five stored digests described CRLF
+bytes. That observed failure remains part of the evidence. This test-side policy
+corrects comparison without changing fixtures, registry digests, numerical data
+or thresholds. Report `artifact_hashes` retain `sha256-v1` and always hash actual
+raw disk bytes; on LF checkouts those five report digests intentionally differ
+from the historical comparison digests. This evidence correction changes no
+report schema and establishes no numerical parity or platform-release claim.
 
 ## What each gate protects
 
@@ -101,7 +127,7 @@ fixture SHA-256 registry). It reuses the MATH-EVD-001 evidence types
   equals the committed baseline (`1e-12`) and the pre-registered per-problem
   bands (DTLZ2 strict 5%/2×, DTLZ1 degenerate-absolute, DTLZ7 applied 0.85) still
   pass. Thresholds are reused from NSGA-004 and are **not retuned**.
-* **D.report-schema** — the registry hashes and the A..E structure stay complete
+* **D.report-schema** — raw artifact hashes, policy-checked registry coverage and the A..E structure stay complete
   and machine-checkable.
 * **E.corruption-sensitivity** — the corruption suite still fails the gate for
   mutated components, and two real one-off local mutations each failed their

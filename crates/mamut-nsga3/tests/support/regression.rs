@@ -112,6 +112,16 @@ pub const REGISTRY_FILES: [&str; 6] = [
     "crates/mamut-nsga3/tests/fixtures/regression/legacy_provenance.json",
 ];
 
+/// Exactly these historical registry entries use `canonical-crlf-v1`.
+/// All other paths retain raw-byte SHA-256, including future registry entries.
+pub const CANONICAL_CRLF_V1_FILES: [&str; 5] = [
+    "crates/mamut-nsga3/tests/fixtures/conformance/component_oracle.json",
+    "crates/mamut-nsga3/tests/fixtures/conformance/pymoo_dtlz_oracle.json",
+    "crates/mamut-nsga3/tests/fixtures/conformance/LITERATURE_CHECKLIST.md",
+    "crates/mamut-nsga3/tests/fixtures/conformance/provenance.md",
+    "crates/mamut-nsga3/tests/fixtures/metrics_5d_golden.json",
+];
+
 // ───────────────────────────── paths ─────────────────────────
 
 /// Repository root (`crates/mamut-nsga3/../..`).
@@ -166,11 +176,43 @@ pub fn sha256_hex(name: &str, bytes: &[u8]) -> String {
     hex(artifact.digest())
 }
 
-/// SHA-256 hex of a committed file, read from disk.
+/// Raw-byte SHA-256 hex of a committed file, read from disk.
 pub fn file_sha256_hex(path: &str) -> String {
     let bytes = std::fs::read(repo_root().join(path))
         .unwrap_or_else(|error| panic!("registry file `{path}` unreadable: {error}"));
     sha256_hex(path, &bytes)
+}
+
+/// Comparison digest for the committed registry, separate from raw report hashes.
+/// `canonical-crlf-v1` maps LF and CRLF to CRLF, rejects lone CR, and preserves
+/// every other byte. Only the five explicitly named historical paths use it.
+pub fn registry_sha256_hex(path: &str, bytes: &[u8]) -> Result<String, &'static str> {
+    if !CANONICAL_CRLF_V1_FILES.contains(&path) {
+        return Ok(sha256_hex(path, bytes));
+    }
+
+    let mut canonical = Vec::with_capacity(bytes.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        match bytes[i] {
+            b'\r' => {
+                if bytes.get(i + 1) != Some(&b'\n') {
+                    return Err("canonical-crlf-v1 rejects lone CR");
+                }
+                canonical.extend_from_slice(b"\r\n");
+                i += 2;
+            }
+            b'\n' => {
+                canonical.extend_from_slice(b"\r\n");
+                i += 1;
+            }
+            byte => {
+                canonical.push(byte);
+                i += 1;
+            }
+        }
+    }
+    Ok(sha256_hex(path, &canonical))
 }
 
 // ───────────────────────────── category A: legacy trace ─────────────────────────
@@ -635,7 +677,7 @@ pub struct Vv001Report {
     pub rng: RngSpec,
     /// Corpus seeds for this lane.
     pub seeds: Vec<u64>,
-    /// Fixture SHA-256 registry (path, hex).
+    /// Actual raw on-disk fixture SHA-256 hashes (path, hex), not comparison digests.
     pub fixture_registry: Vec<(String, String)>,
     /// Gate entries.
     pub gates: Vec<Gate>,
@@ -649,7 +691,8 @@ pub fn code_sha() -> String {
     }
 }
 
-/// The committed fixture registry as `(path, sha256_hex)` pairs.
+/// Committed comparison digests as `(path, sha256_hex)` pairs; historical entries
+/// use `canonical-crlf-v1`, while other paths use raw bytes.
 pub fn fixture_registry() -> Vec<(String, String)> {
     baseline()
         .field("fixture_registry")
@@ -842,7 +885,13 @@ pub fn build_report(lane: Lane) -> Vv001Report {
         algorithm: algorithm_spec(),
         rng: rng_spec(),
         seeds,
-        fixture_registry: fixture_registry(),
+        fixture_registry: fixture_registry()
+            .into_iter()
+            .map(|(path, _)| {
+                let digest = file_sha256_hex(&path);
+                (path, digest)
+            })
+            .collect(),
         gates,
     }
 }
